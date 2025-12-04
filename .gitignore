@@ -1,0 +1,5 @@
+﻿.vs
+.cache
+.vscode
+HandmadeHero/build/*
+!HandmadeHero/build/win32_handmade.sln
