@@ -10,7 +10,7 @@ pong: xdg-shell-protocol.o pong.o
 xdg-shell-protocol.o: ./build/xdg-shell-protocol.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-pong.o: ./code/pong.cpp
+pong.o: ./code/wayland_pong.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
