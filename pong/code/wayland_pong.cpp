@@ -1,3 +1,6 @@
+#include "pong.h"
+
+#include <cmath>
 #include <cstdint>
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -12,48 +15,21 @@
 #include <wayland-client-protocol.h>
 #include <wayland-client.h>
 
-#define BUF_COUNT 3
-
-struct buffer {
-  struct wl_buffer *wlbuf;
-  void *data; /* mmap pointer to this buffer's start */
-  size_t size;
-  int busy; /* 1 if compositor is using it */
-  int width, height;
-  int stride;
-};
-
-/* Wayland code */
-struct client_state {
-  /* Globals */
-  struct wl_display *wl_display;
-  struct wl_registry *wl_registry;
-  struct wl_shm *wl_shm;
-  struct wl_compositor *wl_compositor;
-  struct xdg_wm_base *xdg_wm_base;
-  /* Objects */
-  struct wl_surface *wl_surface;
-  struct xdg_surface *xdg_surface;
-  struct xdg_toplevel *xdg_toplevel;
-
-  struct buffer buffers[BUF_COUNT];
-
-  struct wl_callback *frame_cb;
-};
+#include "wayland_pong.h"
 
 /* wl_buffer release - compositor no longer holds a reference to the buffer */
 static void wl_buffer_release(void *data, struct wl_buffer *wl_buffer) {
-  struct buffer *b = (buffer *)data;
+  struct game_screen_buffer *b = (game_screen_buffer *)data;
   b->busy = 0;
 }
 static const struct wl_buffer_listener wl_buffer_listener = {
     .release = wl_buffer_release};
 
 static void frame_done(void *data, struct wl_callback *cb, uint32_t time) {
-  struct client_state *a = (client_state *)data;
-  if (a->frame_cb) {
-    wl_callback_destroy(a->frame_cb);
-    a->frame_cb = NULL;
+  struct wayland_state *state = (wayland_state *)data;
+  if (state->frame_cb) {
+    wl_callback_destroy(state->frame_cb);
+    state->frame_cb = NULL;
   }
 
   /* update animation state */
@@ -78,6 +54,7 @@ static void frame_done(void *data, struct wl_callback *cb, uint32_t time) {
 
   (void)time;
 }
+
 static const struct wl_callback_listener frame_listener = {.done = frame_done};
 
 void draw_rect(uint32_t *buf, int width, int x0, int y0, int w, int h,
@@ -87,12 +64,21 @@ void draw_rect(uint32_t *buf, int width, int x0, int y0, int w, int h,
       buf[y * width + x] = color;
     }
   }
+  // uint8_t *row = (uint8_t *)buf->data + x0 * 4 + y0 * buf->stride;
+  //
+  // for (int y = y0; y < y0 + h; y++) {
+  //   uint32_t *pixel = (uint32_t *)row;
+  //   for (int x = x0; x < x0 + w; x++) {
+  //     *pixel++ = color;
+  //   }
+  //   row += width;
+  // }
 }
 
 /* paint into the buffer memory (XRGB8888 assumed) */
-static void paint(struct buffer *b, struct client_state *a) {
+static void paint(struct game_screen_buffer *b, struct wayland_state *a) {
   std::cout << "started painting" << '\n';
-  uint32_t *p = (uint32_t *)b->data;
+  uint32_t *p = (uint32_t *)b->memory;
   int width = b->width;
   int height = b->height;
 
@@ -109,12 +95,12 @@ static void paint(struct buffer *b, struct client_state *a) {
   draw_rect(p, width, 0, 0, width, height, bg);
 
   uint32_t color = 0xFFFFFFFF; // white
-  draw_rect(p, width, 20, 20, 30, height - 40, color);
-  draw_rect(p, width, 600, 20, 30, height - 40, color);
+  draw_rect(p, width, 20, 20, 30, height / 2, color);
+  draw_rect(p, width, 600, 20, 30, height / 2, color);
 }
 
-static void draw_frame(struct client_state *state) {
-  struct buffer *b = NULL;
+static void draw_frame(struct wayland_state *state) {
+  struct game_screen_buffer *b = NULL;
 
   /* find first non-busy buffer */
   for (int i = 0; i < BUF_COUNT; ++i) {
@@ -124,9 +110,9 @@ static void draw_frame(struct client_state *state) {
     }
   }
 
+  /* All buffers busy; skip this draw. With triple buffering this is much
+   * rarer. */
   if (!b) {
-    /* All buffers busy; skip this draw. With triple buffering this is much
-     * rarer. */
     return;
   }
 
@@ -185,55 +171,6 @@ static int allocate_shm_file(size_t size) {
   return fd;
 }
 
-/* create triple shm-backed buffers in one pool */
-static int create_triple_shm_buffers(struct client_state *a, int width,
-                                     int height) {
-  int stride = width * 4;
-  size_t single_size = (size_t)stride * (size_t)height;
-  size_t pool_size = single_size * BUF_COUNT;
-
-  int fd = allocate_shm_file(pool_size);
-  if (fd < 0) {
-    fprintf(stderr, "failed to create shm file\n");
-    return -1;
-  }
-
-  void *map = mmap(NULL, pool_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-  if (map == MAP_FAILED) {
-    close(fd);
-    fprintf(stderr, "mmap failed\n");
-    return -1;
-  }
-
-  struct wl_shm_pool *pool = wl_shm_create_pool(a->wl_shm, fd, pool_size);
-  if (!pool) {
-    munmap(map, pool_size);
-    close(fd);
-    fprintf(stderr, "wl_shm_create_pool failed\n");
-    return -1;
-  }
-
-  std::cout << "test 3" << '\n';
-
-  for (int i = 0; i < BUF_COUNT; ++i) {
-    struct buffer *b = &a->buffers[i];
-    b->width = width;
-    b->height = height;
-    b->stride = stride;
-    b->size = single_size;
-    b->data = (uint8_t *)map + i * single_size;
-    b->wlbuf = wl_shm_pool_create_buffer(pool, i * single_size, /* offset */
-                                         width, height, stride,
-                                         WL_SHM_FORMAT_XRGB8888);
-    wl_buffer_add_listener(b->wlbuf, &wl_buffer_listener, b);
-    b->busy = 0;
-  }
-
-  wl_shm_pool_destroy(pool);
-  close(fd);
-  return 0;
-}
-
 // xdg_wm_base ping pong
 static void xdg_wm_base_ping(void *data, struct xdg_wm_base *xdg_wm_base,
                              uint32_t serial) {
@@ -248,7 +185,7 @@ static const struct xdg_wm_base_listener xdg_wm_base_listener = {
 static void registry_global_handler(void *data, struct wl_registry *registry,
                                     uint32_t name, const char *interface,
                                     uint32_t version) {
-  struct client_state *state = (client_state *)data;
+  struct wayland_state *state = (wayland_state *)data;
 
   if (strcmp(interface, wl_compositor_interface.name) == 0) {
     state->wl_compositor = (wl_compositor *)wl_registry_bind(
@@ -270,7 +207,7 @@ struct wl_registry_listener listener = {.global = registry_global_handler};
 // surface listeners
 static void xdg_surface_configure(void *data, struct xdg_surface *xdg_surface,
                                   uint32_t serial) {
-  client_state *state = (client_state *)data;
+  wayland_state *state = (wayland_state *)data;
   xdg_surface_ack_configure(xdg_surface, serial);
 
   draw_frame(state);
@@ -280,7 +217,7 @@ static const struct xdg_surface_listener xdg_surface_listener = {
     .configure = xdg_surface_configure,
 };
 
-static int connect_wayland_display(client_state *state) {
+static int connect_wayland_display(wayland_state *state) {
   // 1. we need to create a display
   state->wl_display = wl_display_connect(NULL);
 
@@ -294,7 +231,7 @@ static int connect_wayland_display(client_state *state) {
   return 0;
 }
 
-static int get_wayland_globals(client_state *state) {
+static int get_wayland_globals(wayland_state *state) {
   state->wl_registry = wl_display_get_registry(state->wl_display);
   wl_registry_add_listener(state->wl_registry, &listener, state);
   wl_display_roundtrip(state->wl_display);
@@ -308,7 +245,7 @@ static int get_wayland_globals(client_state *state) {
   return 0;
 }
 
-static int add_wayland_surfaces(client_state *state) {
+static int add_wayland_surfaces(wayland_state *state) {
   // 3. Add surface
   state->wl_surface = wl_compositor_create_surface(state->wl_compositor);
   state->xdg_surface =
@@ -322,10 +259,63 @@ static int add_wayland_surfaces(client_state *state) {
   return 0;
 }
 
-int main(int argc, char *argv[]) {
-  struct client_state state;
+// buffers
+static int create_wayland_buffers(wayland_state *state) {
+  std::cout << state->client_width << '\n';
+  int stride = state->client_width * 4;
+  size_t single_size = (size_t)stride * (size_t)state->client_height;
+  size_t pool_size = single_size * BUF_COUNT;
 
+  int fd = allocate_shm_file(pool_size);
+  if (fd < 0) {
+    fprintf(stderr, "failed to create shm file\n");
+    return 1;
+  }
+
+  void *map = mmap(NULL, pool_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  if (map == MAP_FAILED) {
+    close(fd);
+    fprintf(stderr, "mmap failed\n");
+    return 1;
+  }
+
+  struct wl_shm_pool *pool = wl_shm_create_pool(state->wl_shm, fd, pool_size);
+  if (!pool) {
+    munmap(map, pool_size);
+    close(fd);
+    fprintf(stderr, "wl_shm_create_pool failed\n");
+    return 1;
+  }
+
+  for (int i = 0; i < BUF_COUNT; ++i) {
+    struct game_screen_buffer *b = &state->buffers[i];
+    b->width = state->client_width;
+    b->height = state->client_height;
+    b->pitch = stride;
+    b->memory = (uint8_t *)map + i * single_size;
+    b->wlbuf =
+        wl_shm_pool_create_buffer(pool, i * single_size, /* offset */
+                                  state->client_width, state->client_height,
+                                  stride, WL_SHM_FORMAT_XRGB8888);
+    wl_buffer_add_listener(b->wlbuf, &wl_buffer_listener, b);
+    b->busy = 0;
+  }
+
+  wl_shm_pool_destroy(pool);
+  close(fd);
+
+  return 0;
+}
+
+int main(int argc, char *argv[]) {
+  struct wayland_state state;
+
+  // sets all bits to 0 in the state object
+  // this makes it we have a fresh object and no unexpected behaviour
   memset(&state, 0, sizeof(state));
+
+  state.client_width = 640;
+  state.client_height = 640;
 
   if (connect_wayland_display(&state) > 0) {
     return 1;
@@ -339,20 +329,21 @@ int main(int argc, char *argv[]) {
     return 3;
   }
 
-  /* create triple shm buffers */
-  if (create_triple_shm_buffers(&state, 640, 480) < 0) {
-    fprintf(stderr, "failed to create buffers\n");
-    return 1;
+  if (create_wayland_buffers(&state) > 0) {
+    return 4;
   }
 
-  std::cout << " buffers created" << '\n';
+  int monitorRefreshHz = 60;
+
+  int gameUpdateHz = (monitorRefreshHz / 2);
+
+  float_t TargetSecondsPerFrame = 1.0f / (float_t)gameUpdateHz;
 
   while (1) {
     int rc = wl_display_dispatch_pending(state.wl_display);
     if (rc == -1)
       break;
 
-    std::cout << "test 1" << '\n';
     /* if we have no pending frame callback and a free buffer, draw */
     bool any_free = false;
     for (int i = 0; i < BUF_COUNT; ++i) {
@@ -362,13 +353,10 @@ int main(int argc, char *argv[]) {
       }
     }
 
-    std::cout << "test 2" << '\n';
-
     if (any_free && state.frame_cb == NULL) {
       draw_frame(&state);
     }
 
-    std::cout << "test 3" << '\n';
     rc = wl_display_dispatch(state.wl_display);
     if (rc == -1)
       break;
