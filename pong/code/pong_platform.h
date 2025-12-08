@@ -1,4 +1,5 @@
 #ifndef PONG_PLATFORM_H
+#define PONG_PLATFORM_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -37,11 +38,11 @@ typedef struct game_offscreen_buffer {
 
 typedef struct game_memory {
   bool32 isInitialized;
-  uint64 PermanentStorageSize;
-  void *PermanentStorage; // Required to be cleared at 0 on startup
+  uint64 permanentStorageSize;
+  void *permanentStorage; // Required to be cleared at 0 on startup
 
-  uint64 TransientStorageSize;
-  void *TransientStorage;
+  uint64 transientStorageSize;
+  void *transientStorage;
 
   // debug_platform_free_file_memory *DEBUGPlatformFreeFileMemory;
   // debug_platform_read_entire_file *DEBUGPlatformReadEntireFile;
@@ -70,7 +71,5 @@ typedef GAME_GET_SOUND_SAMPLES(game_get_sound_samples);
 #ifdef __cplusplus
 }
 #endif
-
-#define PONG_PLATFORM_H
 
 #endif

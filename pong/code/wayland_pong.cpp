@@ -1,13 +1,14 @@
 #include "pong.h"
 
-#include <cmath>
 #include <cstdint>
+#include <ctime>
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/syscall.h>
 #include <syscall.h>
 #include <unistd.h>
 
+#include "pong_platform.h"
 #include "xdg-shell-client-protocol.h"
 #include <iostream>
 #include <string.h>
@@ -75,61 +76,42 @@ void draw_rect(uint32_t *buf, int width, int x0, int y0, int w, int h,
   // }
 }
 
-/* paint into the buffer memory (XRGB8888 assumed) */
-static void paint(struct game_screen_buffer *b, struct wayland_state *a) {
-  std::cout << "started painting" << '\n';
-  uint32_t *p = (uint32_t *)b->memory;
-  int width = b->width;
-  int height = b->height;
-
-  std::cout << "before background" << '\n';
+static void render_frame(game_state *GameState,
+                         struct game_screen_buffer *buffer) {
+  std::cout << "rendering frame \n";
+  uint32_t *p = (uint32_t *)buffer->memory;
+  int width = buffer->width;
+  int height = buffer->height;
 
   /* fill background */
   uint32_t bg = 0xFF202030; /* dark blue-ish */
-  for (int y = 0; y < height; ++y) {
-    for (int x = 0; x < width; ++x) {
-      p[y * width + x] = bg;
-    }
-  }
 
   draw_rect(p, width, 0, 0, width, height, bg);
 
   uint32_t color = 0xFFFFFFFF; // white
-  draw_rect(p, width, 20, 20, 30, height / 2, color);
-  draw_rect(p, width, 600, 20, 30, height / 2, color);
+
+  //  player a
+  draw_rect(p, width, GameState->PlayerA.playerX, GameState->PlayerA.playerY,
+            30, height / 2, color);
+  // player b
+  draw_rect(p, width, GameState->PlayerB.playerX, GameState->PlayerB.playerY,
+            30, height / 2, color);
+  // ball
+  draw_rect(p, width, 320, 320, 30, 30, color);
 }
 
-static void draw_frame(struct wayland_state *state) {
-  struct game_screen_buffer *b = NULL;
-
-  /* find first non-busy buffer */
-  for (int i = 0; i < BUF_COUNT; ++i) {
-    if (!state->buffers[i].busy) {
-      b = &state->buffers[i];
-      break;
-    }
-  }
-
-  /* All buffers busy; skip this draw. With triple buffering this is much
-   * rarer. */
-  if (!b) {
-    return;
-  }
-
-  std::cout << " started drawing frame" << '\n';
-
-  paint(b, state);
-
-  std::cout << " painted frame" << '\n';
-
-  wl_surface_attach(state->wl_surface, b->wlbuf, 0, 0);
-  wl_surface_damage(state->wl_surface, 0, 0, 640, 480);
+static void present_frame(struct wayland_state *state,
+                          game_screen_buffer *buffer) {
+  std::cout << "presenting frame \n";
+  wl_surface_attach(state->wl_surface, buffer->wlbuf, 0, 0);
+  wl_surface_damage(state->wl_surface, 0, 0, state->client_width,
+                    state->client_height);
 
   state->frame_cb = wl_surface_frame(state->wl_surface);
   wl_callback_add_listener(state->frame_cb, &frame_listener, state);
 
   wl_surface_commit(state->wl_surface);
-  b->busy = 1;
+  buffer->busy = 1;
 }
 
 static void randname(char *buf) {
@@ -209,8 +191,6 @@ static void xdg_surface_configure(void *data, struct xdg_surface *xdg_surface,
                                   uint32_t serial) {
   wayland_state *state = (wayland_state *)data;
   xdg_surface_ack_configure(xdg_surface, serial);
-
-  draw_frame(state);
 }
 
 static const struct xdg_surface_listener xdg_surface_listener = {
@@ -229,6 +209,13 @@ static int connect_wayland_display(wayland_state *state) {
 
   std::cout << "Created display!" << '\n';
   return 0;
+}
+
+static real32 get_time_seconds() {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+
+  return (real32)ts.tv_sec + (real32)ts.tv_nsec / 1e9;
 }
 
 static int get_wayland_globals(wayland_state *state) {
@@ -306,6 +293,41 @@ static int create_wayland_buffers(wayland_state *state) {
 
   return 0;
 }
+void allocate_game_memory(wayland_state *state, game_memory *memory) {
+  uint64 permanent_size = Megabytes(64);
+  uint64 transient_size = Megabytes(256);
+
+  uint64 total_size = permanent_size + transient_size;
+
+  state->game_memory_size = total_size;
+
+  state->game_memory_block = mmap(0, total_size, PROT_READ | PROT_WRITE,
+                                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+  memory->permanentStorageSize = permanent_size;
+  memory->permanentStorage = state->game_memory_block;
+
+  memory->transientStorageSize = transient_size;
+  memory->transientStorage = (uint8 *)state->game_memory_block + permanent_size;
+}
+
+static void update_game(game_state *GameState, real32 deltaTime) {
+  std::cout << "updating game\n";
+  GameState->PlayerA.playerY++;
+
+  std::cout << "player a Y coord: " << GameState->PlayerA.playerY << "\n";
+  GameState->PlayerB.playerY++;
+  std::cout << "player b Y coord: " << GameState->PlayerB.playerY << "\n";
+}
+
+static game_screen_buffer *acquire_free_buffer(wayland_state *state) {
+  for (int i = 0; i < BUF_COUNT; ++i) {
+    if (!state->buffers[i].busy) {
+      return &state->buffers[i];
+    }
+  }
+  return NULL;
+}
 
 int main(int argc, char *argv[]) {
   struct wayland_state state;
@@ -333,28 +355,44 @@ int main(int argc, char *argv[]) {
     return 4;
   }
 
-  int monitorRefreshHz = 60;
+  struct game_memory game_memory;
+  allocate_game_memory(&state, &game_memory);
+
+  game_state *GameState = (game_state *)game_memory.permanentStorage;
+  GameState->PlayerB.playerX = 610;
+  int monitorRefreshHz = 240;
 
   int gameUpdateHz = (monitorRefreshHz / 2);
 
-  float_t TargetSecondsPerFrame = 1.0f / (float_t)gameUpdateHz;
+  real32 target_dt = 1.0f / (real32)gameUpdateHz;
+  real32 last_time = get_time_seconds();
+
+  std::cout << "last_time" << last_time << '\n';
+  real32 accumulator = 0.0f;
 
   while (1) {
+    real32 frame_start = get_time_seconds();
+    real32 dt = frame_start - last_time;
+    last_time = frame_start;
+
+    accumulator += dt;
+
+    while (accumulator >= target_dt) {
+      update_game(GameState, target_dt);
+      accumulator -= target_dt;
+    }
+
     int rc = wl_display_dispatch_pending(state.wl_display);
     if (rc == -1)
       break;
 
-    /* if we have no pending frame callback and a free buffer, draw */
-    bool any_free = false;
-    for (int i = 0; i < BUF_COUNT; ++i) {
-      if (!state.buffers[i].busy) {
-        any_free = true;
-        break;
-      }
-    }
+    if (state.frame_cb == NULL) {
+      game_screen_buffer *free_buffer = acquire_free_buffer(&state);
+      if (free_buffer) {
 
-    if (any_free && state.frame_cb == NULL) {
-      draw_frame(&state);
+        render_frame(GameState, free_buffer);
+        present_frame(&state, free_buffer);
+      }
     }
 
     rc = wl_display_dispatch(state.wl_display);

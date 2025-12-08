@@ -1,6 +1,7 @@
+#include <cstdint>
 #ifndef WAYLAND_PONG_H
 
-#define BUF_COUNT 3
+#define BUF_COUNT 4
 
 struct game_screen_buffer {
   struct wl_buffer *wlbuf;
@@ -30,6 +31,9 @@ struct wayland_state {
   struct game_screen_buffer buffers[BUF_COUNT];
 
   struct wl_callback *frame_cb;
+  // ADD THIS:
+  void *game_memory_block;
+  uint64_t game_memory_size;
 };
 
 struct wayland_game_code {

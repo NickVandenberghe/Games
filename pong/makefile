@@ -4,13 +4,16 @@ CFLAGS = -Wall
 CXXFLAGS = -Wall
 LDFLAGS = -lwayland-client
 
-pong: xdg-shell-protocol.o pong.o
+pong: xdg-shell-protocol.o wayland_pong.o pong.o
 	$(CXX) $^ $(LDFLAGS) -o $@
 
 xdg-shell-protocol.o: ./build/xdg-shell-protocol.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-pong.o: ./code/wayland_pong.cpp
+wayland_pong.o: ./code/wayland_pong.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+pong.o: ./code/pong.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
