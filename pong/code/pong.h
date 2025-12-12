@@ -23,4 +23,6 @@ struct game_state {
   world_position Ball;
 };
 
+void update_game(game_state *GameState, real32 target_dt);
+void render_frame(game_state *GameState, game_offscreen_buffer *buffer);
 #endif

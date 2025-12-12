@@ -33,6 +33,7 @@ typedef struct game_offscreen_buffer {
   int Height;
   // is in bytes
 
+  int Pitch;
   int BytesPerPixel;
 } game_offscreen_buffer;
 

@@ -1,16 +1,16 @@
 #include <cstdint>
 #ifndef WAYLAND_PONG_H
 
-#define BUF_COUNT 4
+#define BUF_COUNT 3
 
 struct game_screen_buffer {
-  struct wl_buffer *wlbuf;
+  void *Memory; /* mmap pointer to this buffer's start */
+  int Busy;     /* 1 if compositor is using it */
+  int Width, Height;
+  int Pitch;
+  int BytesPerPixel;
 
-  void *memory; /* mmap pointer to this buffer's start */
-  int busy;     /* 1 if compositor is using it */
-  int width, height;
-  int pitch;
-  int bytesPerPixel;
+  struct wl_buffer *wlbuf;
 };
 
 struct wayland_state {
@@ -28,12 +28,20 @@ struct wayland_state {
   int client_width;
   int client_height;
 
+  uint32_t PendingWidth;
+  uint32_t PendingHeight;
+  bool32 ResizePending;
+
   struct game_screen_buffer buffers[BUF_COUNT];
 
   struct wl_callback *frame_cb;
   // ADD THIS:
   void *game_memory_block;
   uint64_t game_memory_size;
+
+  void *BuffersBase;
+  std::size_t BuffersSize;
+  bool32 BuffersMapped;
 };
 
 struct wayland_game_code {

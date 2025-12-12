@@ -1,11 +1,12 @@
 CXX = g++
 CC = gcc
 CFLAGS = -Wall
-CXXFLAGS = -Wall
-LDFLAGS = -lwayland-client
+CXXFLAGS = -Wall -O1 -fsanitize=address -fno-omit-frame-pointer
+LDFLAGS = -fsanitize=address
+LDLIBS = -lwayland-client 
 
 pong: xdg-shell-protocol.o wayland_pong.o pong.o
-	$(CXX) $^ $(LDFLAGS) -o $@
+	$(CXX) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
 xdg-shell-protocol.o: ./build/xdg-shell-protocol.c
 	$(CC) $(CFLAGS) -c $< -o $@
