@@ -3,7 +3,7 @@ CC = gcc
 CFLAGS = -Wall
 CXXFLAGS = -Wall -O1 -fsanitize=address -fno-omit-frame-pointer
 LDFLAGS = -fsanitize=address
-LDLIBS = -lwayland-client 
+LDLIBS = -lwayland-client -lxkbcommon
 
 pong: xdg-shell-protocol.o wayland_pong.o pong.o
 	$(CXX) $(LDFLAGS) $^ $(LDLIBS) -o $@
