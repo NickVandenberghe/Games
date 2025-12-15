@@ -3,42 +3,73 @@
 #include <iostream>
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender) {}
 
-void draw_rect(game_offscreen_buffer *buffer, int width, int x0, int y0, int w,
-               int h, uint32_t color) {
-  if (!buffer || !buffer->Memory)
-    return;
-  if (x0 < 0) {
-    w += x0;
-    x0 = 0;
-  }
-  if (y0 < 0) {
-    h += y0;
-    y0 = 0;
-  }
-  if (x0 + w > buffer->Width)
-    w = buffer->Width - x0;
-  if (y0 + h > buffer->Height)
-    h = buffer->Height - y0;
-  if (w <= 0 || h <= 0)
-    return;
-  uint8_t *row = (uint8_t *)buffer->Memory + y0 * buffer->Pitch + x0 * 4;
-  for (int y = 0; y < h; y++) {
-    uint32_t *pixel = (uint32_t *)row;
-    for (int x = 0; x < w; x++)
-      pixel[x] = color;
+inline int32 RoundReal32ToInt32(real32 Real32) {
+  int32 Result = (int32)(Real32 + 0.5f);
+  return Result;
+}
 
-    row += buffer->Pitch;
+void draw_rect(game_offscreen_buffer *Buffer, real32 RealMinX, real32 RealMinY,
+               real32 RealMaxX, real32 RealMaxY, uint32 color) {
+  if (!Buffer || !Buffer->Memory)
+    return;
+
+  std::cout << "RealMinX" << RealMinX << '\n';
+  std::cout << "RealMaxX" << RealMaxX << '\n';
+  std::cout << "RealMinY" << RealMinY << '\n';
+  std::cout << "RealMaxY" << RealMaxY << '\n';
+
+  int32 MinX = RoundReal32ToInt32(RealMinX);
+  int32 MinY = RoundReal32ToInt32(RealMinY);
+  int32 MaxX = RoundReal32ToInt32(RealMaxX);
+  int32 MaxY = RoundReal32ToInt32(RealMaxY);
+
+  std::cout << "Before" << '\n';
+  std::cout << "MinX" << MinX << '\n';
+  std::cout << "MaxX" << MaxX << '\n';
+  std::cout << "MinY" << MinY << '\n';
+  std::cout << "MaxY" << MaxY << '\n';
+
+  if (MinX < 0) {
+    MinX = 0;
+  }
+
+  if (MinY < 0) {
+    MinY = 0;
+  }
+
+  if (MaxX >= Buffer->Width) {
+    MaxX = Buffer->Width;
+  }
+
+  if (MaxY >= Buffer->Height) {
+    MaxY = Buffer->Height;
+  }
+
+  std::cout << "After" << '\n';
+  std::cout << "MinX" << MinX << '\n';
+  std::cout << "MaxX" << MaxX << '\n';
+  std::cout << "MinY" << MinY << '\n';
+  std::cout << "MaxY" << MaxY << '\n';
+
+  uint8 *Row = (uint8 *)Buffer->Memory + MinX * Buffer->BytesPerPixel +
+               MinY * Buffer->Pitch;
+  for (int y = MinY; y < MaxY; y++) {
+    uint32 *Pixel = (uint32 *)Row;
+    for (int x = MinX; x < MaxX; x++)
+      Pixel[x] = color;
+
+    Row += Buffer->Pitch;
   }
 }
 
-void update_game(game_state *GameState, game_input *GameInput,
-                 real32 deltaTime) {
-  // std::cout << "update_game" << "\n";
-  int speed = 2; // pixels per second
+inline bool32 IsCoordinateEmpty() {};
 
-  // std::cout << "update_game" << '\n';
+void update_game(game_state *GameState, game_input *GameInput) {
+
+  real32 speed = 250.0f;
+
   for (int ControllerIndex = 0;
-       ControllerIndex < ArrayCount(GameInput->Controllers);
+       ControllerIndex < (int)ArrayCount(GameInput->Controllers);
        ControllerIndex++) {
     game_controller_input *Controller =
         GetController(GameInput, ControllerIndex);
@@ -65,12 +96,14 @@ void update_game(game_state *GameState, game_input *GameInput,
         dPlayerX = 1.0f;
       }
 
-      dPlayerX *= 5.0f;
-      dPlayerY *= 5.0f;
+      dPlayerX *= speed;
+      dPlayerY *= speed;
 
-      GameState->PlayerA.playerY += (int)(speed * dPlayerY);
-      GameState->Ball.playerX += (int)(speed * dPlayerX);
-      GameState->Ball.playerY += (int)(speed * dPlayerY);
+      GameState->PlayerA.playerY += (int)(GameInput->dtForFrame * dPlayerY);
+      // std::cout << "GameState->PlayerA.playerY" << GameState->PlayerA.playerY
+      //           << '\n';
+      GameState->Ball.playerX += (int)(GameInput->dtForFrame * dPlayerX);
+      GameState->Ball.playerY += (int)(GameInput->dtForFrame * dPlayerY);
       // diagnoal will be faster! Fix once we have vectors
 
       // world_position NewPlayerP = GameState->PlayerP;
@@ -100,29 +133,78 @@ void update_game(game_state *GameState, game_input *GameInput,
   // GameState->PlayerB.playerY += (int)(speed * deltaTime);
 }
 
-void render_frame(game_state *GameState, game_input *GameInput,
-                  game_offscreen_buffer *buffer) {
+void render_frame(game_state *GameState, game_offscreen_buffer *Buffer) {
+  world *World = &GameState->World;
+  real32 HorizontalMetersToPixels =
+      (real32)Buffer->Width / (real32)World->WorldSideInMeters;
 
-  int width = buffer->Width;
-  int height = buffer->Height;
+  real32 VerticalMetersToPixels =
+      (real32)Buffer->Height / (real32)World->WorldSideInMeters;
 
-  std::cout << "GameState->Ball.playerX" << GameState->Ball.playerX << '\n';
-  std::cout << "GameState->Ball.playerY" << GameState->Ball.playerY << '\n';
+  int width = Buffer->Width;
+  int height = Buffer->Height;
+
+  std::cout << "width" << width << '\n';
+  std::cout << "height" << height << '\n';
 
   /* fill background */
   uint32_t bg = 0xFF202030; /* dark blue-ish */
 
-  draw_rect(buffer, width, 0, 0, width, height, bg);
+  draw_rect(Buffer, 0.0f, 0.0f, (real32)width, (real32)height, bg);
 
   uint32_t color = 0xFFFFFFFF; // white
 
+  // std::cout << "PlayerA-X" << GameState->PlayerA.playerX << '\n';
+  // std::cout << "PlayerA-XMtP"
+  //           << GameState->PlayerA.playerX * HorizontalMetersToPixels << '\n';
+  // std::cout << "PlayerA-Y" << GameState->PlayerA.playerY << '\n';
+  // std::cout << "PlayerA-YMtp"
+  // << GameState->PlayerA.playerY * VerticalMetersToPixels << '\n';
+  // std::cout << "PlayerB-X" << GameState->PlayerB.playerX << '\n';
+  // std::cout << "PlayerB-XMtP"
+  //           << GameState->PlayerB.playerX * HorizontalMetersToPixels << '\n';
+  // std::cout << "PlayerB-Y" << GameState->PlayerB.playerY << '\n';
+  // std::cout << "PlayerB-YMtp"
+  //           << GameState->PlayerB.playerY * VerticalMetersToPixels << '\n';
+  std::cout << "BallX" << GameState->Ball.playerX << '\n';
+  std::cout << "BallXMtP" << GameState->Ball.playerX * HorizontalMetersToPixels
+            << '\n';
+  std::cout << "BallXMtP"
+            << (GameState->Ball.playerX + GameState->BallWidth) *
+                   HorizontalMetersToPixels
+            << '\n';
+  std::cout << "BallY" << GameState->Ball.playerY << '\n';
+  std::cout << "BallYMtp" << GameState->Ball.playerY * VerticalMetersToPixels
+            << '\n';
+  std::cout << "BallYMtp"
+            << (GameState->Ball.playerY + GameState->BallHeight) *
+                   VerticalMetersToPixels
+            << '\n';
+
   //  player a
-  draw_rect(buffer, width, GameState->PlayerA.playerX,
-            GameState->PlayerA.playerY, 30, height / 2, color);
+  draw_rect(Buffer, GameState->PlayerA.playerX * HorizontalMetersToPixels,
+            GameState->PlayerA.playerY * VerticalMetersToPixels,
+            (GameState->PlayerA.playerX + GameState->PaddleWidth) *
+                HorizontalMetersToPixels,
+            (GameState->PlayerA.playerY + GameState->PaddleHeight) *
+                VerticalMetersToPixels,
+            color);
+
   // player b
-  draw_rect(buffer, width, GameState->PlayerB.playerX,
-            GameState->PlayerB.playerY, 30, height / 2, color);
+  draw_rect(Buffer, GameState->PlayerB.playerX * HorizontalMetersToPixels,
+            GameState->PlayerB.playerY * VerticalMetersToPixels,
+            (GameState->PlayerB.playerX + GameState->PaddleWidth) *
+                HorizontalMetersToPixels,
+            (GameState->PlayerB.playerY + GameState->PaddleHeight) *
+                VerticalMetersToPixels,
+            color);
+
   // ball
-  draw_rect(buffer, width, GameState->Ball.playerX, GameState->Ball.playerY, 30,
-            30, color);
+  draw_rect(Buffer, GameState->Ball.playerX * HorizontalMetersToPixels,
+            GameState->Ball.playerY * VerticalMetersToPixels,
+            (GameState->Ball.playerX + GameState->BallWidth) *
+                HorizontalMetersToPixels,
+            (GameState->Ball.playerY + GameState->BallHeight) *
+                VerticalMetersToPixels,
+            color);
 }

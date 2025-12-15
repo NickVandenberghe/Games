@@ -22,11 +22,28 @@ struct world_position {
   int playerY;
 };
 
+struct world {
+  real32 WorldSideInMeters;
+  int32 WorldSideInPixels;
+  real32 MetersToPixels;
+
+  real32 LowerLeftX;
+  real32 LowerLeftY;
+};
+
 struct game_state {
   world_position PlayerA;
   world_position PlayerB;
 
   world_position Ball;
+
+  int32 PaddleWidth;
+  int32 PaddleHeight;
+
+  int32 BallWidth;
+  int32 BallHeight;
+
+  world World;
 };
 
 inline game_controller_input *GetController(game_input *Input,
@@ -37,8 +54,6 @@ inline game_controller_input *GetController(game_input *Input,
   return Result;
 }
 
-void update_game(game_state *GameState, game_input *GameInput,
-                 real32 target_dt);
-void render_frame(game_state *GameState, game_input *GameInput,
-                  game_offscreen_buffer *buffer);
+void update_game(game_state *GameState, game_input *GameInput);
+void render_frame(game_state *GameState, game_offscreen_buffer *buffer);
 #endif

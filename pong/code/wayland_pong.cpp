@@ -32,17 +32,31 @@ static wayland_state WaylandStateInit() {
   state.PendingHeight = 0;
   state.PendingWidth = 0;
   state.ResizePending = 0;
+
   return state;
+}
+
+inline void GameWorldInit(world *World) {
+  memset(World, 0, sizeof(world));
+
+  World->WorldSideInMeters = 1000.0f;
 }
 
 static void GameStateInit(game_state *GameState) {
   memset(GameState, 0, sizeof(game_state));
   GameState->PlayerA.playerX = 10;
   GameState->PlayerA.playerY = 10;
-  GameState->PlayerB.playerX = 610;
+  GameState->PlayerB.playerX = 950;
   GameState->PlayerB.playerY = 10;
-  GameState->Ball.playerY = 320;
-  GameState->Ball.playerX = 320;
+  GameState->Ball.playerY = 50;
+  GameState->Ball.playerX = 50;
+
+  GameState->PaddleHeight = 200;
+  GameState->PaddleWidth = 20;
+  GameState->BallHeight = 50;
+  GameState->BallWidth = 25;
+
+  GameWorldInit(&GameState->World);
 }
 
 static void screen_to_offscreen(wayland_buffer *src,
@@ -937,6 +951,15 @@ int main(int argc, char *argv[]) {
   game_input *OldInput = &GameInput[1];
 
   while (State.IsRunning) {
+    // std::cout << "1\n" << std::flush; // Prints dots if loop runs
+    int rc = wl_display_dispatch_pending(State.wl_display);
+    if (rc == -1)
+      break;
+
+    real32 frame_start = get_time_seconds();
+    real32 dt = frame_start - last_time;
+    last_time = frame_start;
+
     NewInput->dtForFrame = target_dt;
 
     game_controller_input *OldKeyboardController = GetController(OldInput, 0);
@@ -945,17 +968,8 @@ int main(int argc, char *argv[]) {
     *NewKeyboardController = ZeroController;
     NewKeyboardController->IsConnected = true;
 
-    // std::cout << "1\n" << std::flush; // Prints dots if loop runs
-    int rc = wl_display_dispatch_pending(State.wl_display);
-    if (rc == -1)
-      break;
-
-    WaylandFillKeyboard(NewKeyboardController, &State);
-
     // std::cout << "2\n" << std::flush; // Prints dots if loop runs
-    real32 frame_start = get_time_seconds();
-    real32 dt = frame_start - last_time;
-    last_time = frame_start;
+    WaylandFillKeyboard(NewKeyboardController, &State);
 
     // std::cout << "3\n" << std::flush; // Prints dots if loop runs
     // Optional safety clamp (prevents huge dt)
@@ -964,9 +978,11 @@ int main(int argc, char *argv[]) {
 
     accumulator += dt;
 
+    GameWorldInit(&GameState->World);
+
     // std::cout << "4\n" << std::flush; // Prints dots if loop runs
     while (accumulator >= target_dt) {
-      update_game(GameState, NewInput, target_dt);
+      update_game(GameState, NewInput);
       accumulator -= target_dt;
     }
 
@@ -982,7 +998,7 @@ int main(int argc, char *argv[]) {
         screen_to_offscreen(free_buffer, &GameBuffer);
 
         // std::cout << "9\n" << std::flush; // Prints dots if loop runs
-        render_frame(GameState, NewInput, &GameBuffer);
+        render_frame(GameState, &GameBuffer);
         // std::cout << "10\n" << std::flush; // Prints dots if loop runs
         attach_buffer(&State, free_buffer);
       }
