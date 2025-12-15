@@ -50,7 +50,46 @@ typedef struct game_memory {
   // debug_platform_write_entire_file *DEBUGPlatformWriteEntireFile;
 } game_memory;
 
+typedef struct game_button_state {
+  int HalfTransitionCount;
+  bool32 EndedDown;
+} game_button_state;
+
+typedef struct game_controller_input {
+  bool32 IsConnected;
+  bool32 IsAnalog;
+
+  real32 StickAverageX;
+  real32 StickAverageY;
+
+  union {
+    game_button_state Buttons[12];
+    struct {
+      game_button_state MoveUp;
+      game_button_state MoveDown;
+      game_button_state MoveLeft;
+      game_button_state MoveRight;
+      game_button_state ActionUp;
+      game_button_state ActionDown;
+      game_button_state ActionLeft;
+      game_button_state ActionRight;
+      game_button_state LeftShoulder;
+      game_button_state RightShoulder;
+
+      game_button_state Start;
+      game_button_state Back;
+
+      game_button_state Terminator;
+    };
+  };
+} game_controller_input;
+
 typedef struct game_input {
+  game_button_state MouseButtons[5];
+  int32 MouseX, MouseY, MouseZ;
+
+  real32 dtForFrame;
+  game_controller_input Controllers[5];
 } game_input;
 
 typedef struct game_sound_output_buffer {

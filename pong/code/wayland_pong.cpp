@@ -41,6 +41,8 @@ static void GameStateInit(game_state *GameState) {
   GameState->PlayerA.playerY = 10;
   GameState->PlayerB.playerX = 610;
   GameState->PlayerB.playerY = 10;
+  GameState->Ball.playerY = 320;
+  GameState->Ball.playerX = 320;
 }
 
 static void screen_to_offscreen(wayland_buffer *src,
@@ -59,6 +61,58 @@ static bool all_buffers_free(wayland_state *state) {
     }
   }
   return true;
+}
+
+inline void FillButton(game_button_state *Button, bool32 IsDown) {
+  if (Button->EndedDown != IsDown) {
+    Button->EndedDown = IsDown;
+    ++Button->HalfTransitionCount;
+  }
+}
+
+static game_key TranslateKey(xkb_keysym_t sym) {
+  switch (sym) {
+  case XKB_KEY_w:
+    return Key_W;
+  case XKB_KEY_a:
+    return Key_A;
+  case XKB_KEY_s:
+    return Key_S;
+  case XKB_KEY_d:
+    return Key_D;
+  case XKB_KEY_Up:
+    return Key_Up;
+  case XKB_KEY_Down:
+    return Key_Down;
+  case XKB_KEY_Left:
+    return Key_Left;
+  case XKB_KEY_Right:
+    return Key_Right;
+  case XKB_KEY_q:
+    return Key_Q;
+  case XKB_KEY_e:
+    return Key_Escape;
+  default:
+    return Key_Count; // invalid
+  }
+}
+inline void WaylandFillKeyboard(game_controller_input *Keyboard,
+                                wayland_state *State) {
+  FillButton(&Keyboard->MoveUp,
+             State->KeyDown[Key_W] || State->KeyDown[Key_Up]);
+
+  FillButton(&Keyboard->MoveDown,
+             State->KeyDown[Key_S] || State->KeyDown[Key_Down]);
+
+  FillButton(&Keyboard->MoveLeft,
+             State->KeyDown[Key_A] || State->KeyDown[Key_Left]);
+
+  FillButton(&Keyboard->MoveRight,
+             State->KeyDown[Key_D] || State->KeyDown[Key_Right]);
+
+  FillButton(&Keyboard->LeftShoulder, State->KeyDown[Key_Q]);
+
+  FillButton(&Keyboard->RightShoulder, State->KeyDown[Key_E]);
 }
 
 /* wl_buffer release - compositor no longer holds a reference to the buffer */
@@ -337,12 +391,18 @@ static void wl_keyboard_key(void *data, struct wl_keyboard *wl_keyboard,
   char buf[128];
   uint32_t keycode = key + 8;
   xkb_keysym_t sym = xkb_state_key_get_one_sym(State->xkb_state, keycode);
-  xkb_keysym_get_name(sym, buf, sizeof(buf));
-  const char *action =
-      state == WL_KEYBOARD_KEY_STATE_PRESSED ? "press" : "release";
-  fprintf(stderr, "key %s: sym: %-12s (%d), ", action, buf, sym);
-  xkb_state_key_get_utf8(State->xkb_state, keycode, buf, sizeof(buf));
-  fprintf(stderr, "utf8: '%s'\n", buf);
+
+  bool32 IsDown = (state == WL_KEYBOARD_KEY_STATE_PRESSED);
+  game_key Key = TranslateKey(sym);
+  if (Key < Key_Count) {
+    State->KeyDown[Key] = IsDown;
+  }
+  // xkb_keysym_get_name(sym, buf, sizeof(buf));
+  // const char *action =
+  //     state == WL_KEYBOARD_KEY_STATE_PRESSED ? "press" : "release";
+  // fprintf(stderr, "key %s: sym: %-12s (%d), ", action, buf, sym);
+  // xkb_state_key_get_utf8(State->xkb_state, keycode, buf, sizeof(buf));
+  // fprintf(stderr, "utf8: '%s'\n", buf);
 }
 
 static void wl_keyboard_leave(void *data, struct wl_keyboard *wl_keyboard,
@@ -860,7 +920,7 @@ int main(int argc, char *argv[]) {
 
   game_state *GameState = (game_state *)game_memory.permanentStorage;
   GameStateInit(GameState);
-  int monitorRefreshHz = 2;
+  int monitorRefreshHz = 30;
 
   int gameUpdateHz = (monitorRefreshHz / 2);
   std::cout << "gameUpdateHz" << gameUpdateHz << '\n';
@@ -871,11 +931,26 @@ int main(int argc, char *argv[]) {
   std::cout << "last_time" << last_time << '\n';
   real32 accumulator = 0.0f;
 
+  game_input GameInput[2] = {};
+
+  game_input *NewInput = &GameInput[0];
+  game_input *OldInput = &GameInput[1];
+
   while (State.IsRunning) {
+    NewInput->dtForFrame = target_dt;
+
+    game_controller_input *OldKeyboardController = GetController(OldInput, 0);
+    game_controller_input *NewKeyboardController = GetController(NewInput, 0);
+    game_controller_input ZeroController = {};
+    *NewKeyboardController = ZeroController;
+    NewKeyboardController->IsConnected = true;
+
     // std::cout << "1\n" << std::flush; // Prints dots if loop runs
     int rc = wl_display_dispatch_pending(State.wl_display);
     if (rc == -1)
       break;
+
+    WaylandFillKeyboard(NewKeyboardController, &State);
 
     // std::cout << "2\n" << std::flush; // Prints dots if loop runs
     real32 frame_start = get_time_seconds();
@@ -891,7 +966,7 @@ int main(int argc, char *argv[]) {
 
     // std::cout << "4\n" << std::flush; // Prints dots if loop runs
     while (accumulator >= target_dt) {
-      update_game(GameState, target_dt);
+      update_game(GameState, NewInput, target_dt);
       accumulator -= target_dt;
     }
 
@@ -907,11 +982,15 @@ int main(int argc, char *argv[]) {
         screen_to_offscreen(free_buffer, &GameBuffer);
 
         // std::cout << "9\n" << std::flush; // Prints dots if loop runs
-        render_frame(GameState, &GameBuffer);
+        render_frame(GameState, NewInput, &GameBuffer);
         // std::cout << "10\n" << std::flush; // Prints dots if loop runs
         attach_buffer(&State, free_buffer);
       }
     }
+
+    game_input *Temp = NewInput;
+    NewInput = OldInput;
+    OldInput = Temp;
 
     // std::cout << "11\n" << std::flush; // Prints dots if loop runs
     rc = wl_display_dispatch(State.wl_display);

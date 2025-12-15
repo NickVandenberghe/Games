@@ -31,6 +31,7 @@ struct pointer_event {
   } axes[2];
   uint32_t axis_source;
 };
+
 enum touch_event_mask {
   TOUCH_EVENT_DOWN = 1 << 0,
   TOUCH_EVENT_UP = 1 << 1,
@@ -38,6 +39,22 @@ enum touch_event_mask {
   TOUCH_EVENT_CANCEL = 1 << 3,
   TOUCH_EVENT_SHAPE = 1 << 4,
   TOUCH_EVENT_ORIENTATION = 1 << 5,
+};
+
+enum game_key {
+  Key_W,
+  Key_A,
+  Key_S,
+  Key_D,
+  Key_Up,
+  Key_Down,
+  Key_Left,
+  Key_Right,
+  Key_Q,
+  Key_E,
+  Key_Escape,
+
+  Key_Count
 };
 
 struct touch_point {
@@ -94,6 +111,7 @@ struct wayland_state {
   struct wayland_buffer buffers[BUF_COUNT];
 
   struct wl_callback *frame_cb;
+
   // ADD THIS:
   void *game_memory_block;
   uint64_t game_memory_size;
@@ -101,6 +119,8 @@ struct wayland_state {
   void *BuffersBase;
   std::size_t BuffersSize;
   bool32 BuffersMapped;
+
+  bool32 KeyDown[Key_Count];
 
   float offset;
   uint32_t last_frame;
