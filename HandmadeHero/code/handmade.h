@@ -58,6 +58,9 @@ struct tile_chunk_position {
 };
 
 struct world_position {
+  // These are fixed point tile locations
+  // The high bits are the tile chunk index
+  // the low bits are the tile index in the chunk
   uint32 AbsoluteTileX;
   uint32 AbsoluteTileY;
 
