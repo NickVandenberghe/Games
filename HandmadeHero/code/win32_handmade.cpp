@@ -740,7 +740,7 @@ internal void Win32ProcessPendingMessages(win32_state* State, game_controller_in
           else if (VKCode == 'D' || VKCode == VK_RIGHT) {
             Win32ProcessKeyboardMessages(&KeyboardController->MoveRight, IsDown);
           }
-          else if (VKCode == 'Q') {
+          else if (VKCode == 'Q' || VKCode == VK_SPACE) {
             Win32ProcessKeyboardMessages(&KeyboardController->LeftShoulder, IsDown);
           }
           else if (VKCode == 'E') {

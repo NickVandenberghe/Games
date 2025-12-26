@@ -49,53 +49,43 @@ inline game_controller_input *GetController(game_input *Input,
   return Result;
 }
 
-struct tile_chunk_position {
-  uint32 TileChunkX;
-  uint32 TileChunkY;
+struct memory_arena {
+  memory_index Size;
 
-  uint32 RelativeTileX;
-  uint32 RelativeTileY;
+  uint8* Base;
+  memory_index Used;
 };
 
-struct world_position {
-  // These are fixed point tile locations
-  // The high bits are the tile chunk index
-  // the low bits are the tile index in the chunk
-  uint32 AbsoluteTileX;
-  uint32 AbsoluteTileY;
+inline void InitializeArena(memory_arena *Arena, memory_index Size, uint8 *Base) {
+  Arena->Size = Size;
+  Arena->Base = Base;
+  Arena->Used = 0;
+}
 
-  // This is tile relative
-  real32 TileRelativeX;
-  real32 TileRelativeY;
-};
+#define PushSize(Arena, type) (type *)PushSize_(Arena, sizeof(type))
+#define PushArray(Arena, count, type)                                          \
+  (type *)PushSize_(Arena, (count) * sizeof(type))
 
-struct tile_chunk {
-  uint32 *Tiles;
-};
+void *PushSize_(memory_arena *Arena, memory_index Size) {
+  Assert((Arena->Used + Size) <= Arena->Size);
+  void *Result = Arena->Base + Arena->Used;
+  Arena->Used += Size;
+
+  return Result;
+}
+
+#include "handmade_intrinsics.h"
+#include "handmade_tile.h"
+
 
 struct world {
-  uint32 ChunkShift;
-  uint32 ChunkMask;
-  uint32 ChunkDim;
-
-  real32 TileSideInMeters;
-  int32 TileSideInPixels;
-  real32 MetersToPixels;
-
-  int32 TileChunkCountX;
-  int32 TileChunkCountY;
-
-  tile_chunk *TileChunks;
+  tile_map *TileMap;
 };
 
 struct game_state {
-  world_position PlayerP;
-
-  int32 PlayerTileChunkX;
-  int32 PlayerTileChunkY;
-
-  real32 PlayerX;
-  real32 PlayerY;
+  memory_arena WorldArena;
+  tile_map_position PlayerP;
+  world *World;
 };
 
 #define HANDMADE_H
