@@ -13,22 +13,22 @@ void draw_rect(game_offscreen_buffer *Buffer, real32 RealMinX, real32 RealMinY,
   if (!Buffer || !Buffer->Memory)
     return;
 
-  std::cout << "RealMinX" << RealMinX << '\n';
-  std::cout << "RealMaxX" << RealMaxX << '\n';
-  std::cout << "RealMinY" << RealMinY << '\n';
-  std::cout << "RealMaxY" << RealMaxY << '\n';
-
+  // std::cout << "RealMinX" << RealMinX << '\n';
+  // std::cout << "RealMaxX" << RealMaxX << '\n';
+  // std::cout << "RealMinY" << RealMinY << '\n';
+  // std::cout << "RealMaxY" << RealMaxY << '\n';
+  //
   int32 MinX = RoundReal32ToInt32(RealMinX);
   int32 MinY = RoundReal32ToInt32(RealMinY);
   int32 MaxX = RoundReal32ToInt32(RealMaxX);
   int32 MaxY = RoundReal32ToInt32(RealMaxY);
 
-  std::cout << "Before" << '\n';
-  std::cout << "MinX" << MinX << '\n';
-  std::cout << "MaxX" << MaxX << '\n';
-  std::cout << "MinY" << MinY << '\n';
-  std::cout << "MaxY" << MaxY << '\n';
-
+  // std::cout << "Before" << '\n';
+  // std::cout << "MinX" << MinX << '\n';
+  // std::cout << "MaxX" << MaxX << '\n';
+  // std::cout << "MinY" << MinY << '\n';
+  // std::cout << "MaxY" << MaxY << '\n';
+  //
   if (MinX < 0) {
     MinX = 0;
   }
@@ -45,12 +45,12 @@ void draw_rect(game_offscreen_buffer *Buffer, real32 RealMinX, real32 RealMinY,
     MaxY = Buffer->Height;
   }
 
-  std::cout << "After" << '\n';
-  std::cout << "MinX" << MinX << '\n';
-  std::cout << "MaxX" << MaxX << '\n';
-  std::cout << "MinY" << MinY << '\n';
-  std::cout << "MaxY" << MaxY << '\n';
-
+  // std::cout << "After" << '\n';
+  // std::cout << "MinX" << MinX << '\n';
+  // std::cout << "MaxX" << MaxX << '\n';
+  // std::cout << "MinY" << MinY << '\n';
+  // std::cout << "MaxY" << MaxY << '\n';
+  //
   uint8 *Row = (uint8 *)Buffer->Memory + MinX * Buffer->BytesPerPixel +
                MinY * Buffer->Pitch;
   for (int y = MinY; y < MaxY; y++) {
@@ -62,7 +62,24 @@ void draw_rect(game_offscreen_buffer *Buffer, real32 RealMinX, real32 RealMinY,
   }
 }
 
-inline bool32 IsCoordinateEmpty() {};
+inline bool32 IsCoordinateEmpty(world *World, world_position Pos) {
+  bool32 Result = false;
+
+  std::cout << "World->WorldSideInMeters" << World->WorldSideInMeters << '\n';
+  std::cout << "0 < Pos.playerX " << (0 < Pos.playerX) << '\n';
+  std::cout << "Pos.playerX < World->WorldSideInMeters"
+            << (Pos.playerX < World->WorldSideInMeters) << '\n';
+  std::cout << "0 < Pos.playerX " << (0 < Pos.playerY) << '\n';
+  std::cout << "Pos.playerY < World->WorldSideInMeters"
+            << (Pos.playerY < World->WorldSideInMeters) << '\n';
+
+  if (0 < Pos.playerX && Pos.playerX < World->WorldSideInMeters) {
+    if (0 < Pos.playerY && Pos.playerY < World->WorldSideInMeters) {
+      Result = true;
+    }
+  }
+  return Result;
+};
 
 void update_game(game_state *GameState, game_input *GameInput) {
 
@@ -99,38 +116,27 @@ void update_game(game_state *GameState, game_input *GameInput) {
       dPlayerX *= speed;
       dPlayerY *= speed;
 
-      GameState->PlayerA.playerY += (int)(GameInput->dtForFrame * dPlayerY);
+      world_position PlayerPosition = GameState->PlayerA;
+
+      PlayerPosition.playerY += (int)(GameInput->dtForFrame * dPlayerY);
       // std::cout << "GameState->PlayerA.playerY" << GameState->PlayerA.playerY
       //           << '\n';
       GameState->Ball.playerX += (int)(GameInput->dtForFrame * dPlayerX);
       GameState->Ball.playerY += (int)(GameInput->dtForFrame * dPlayerY);
       // diagnoal will be faster! Fix once we have vectors
 
-      // world_position NewPlayerP = GameState->PlayerP;
-      // NewPlayerP.TileRelativeX += Input->dtForFrame * dPlayerX;
-      // NewPlayerP.TileRelativeY += Input->dtForFrame * dPlayerY;
-      //
-      // NewPlayerP = RecanonicalizePosition(&World, NewPlayerP);
-      //
-      // world_position PlayerLeft = NewPlayerP;
-      // PlayerLeft.TileRelativeX -= 0.5f * PlayerWidth;
-      // PlayerLeft = RecanonicalizePosition(&World, PlayerLeft);
-      //
-      // world_position PlayerRight = NewPlayerP;
-      // PlayerRight.TileRelativeX += 0.5f * PlayerWidth;
-      // PlayerRight = RecanonicalizePosition(&World, PlayerRight);
+      world_position PlayerBottom = PlayerPosition;
 
-      // bool32 IsValid = IsWorldPointEmpty(&World, NewPlayerP) &&
-      //                  IsWorldPointEmpty(&World, PlayerLeft) &&
-      //                  IsWorldPointEmpty(&World, PlayerRight);
-      //
-      // if (IsValid) {
-      //   GameState->PlayerP = NewPlayerP;
-      // }
+      PlayerBottom.playerY += GameState->PaddleHeight;
+
+      bool32 IsValid = IsCoordinateEmpty(&GameState->World, PlayerPosition) &&
+                       IsCoordinateEmpty(&GameState->World, PlayerBottom);
+
+      if (IsValid) {
+        GameState->PlayerA = PlayerPosition;
+      }
     }
   }
-  // GameState->PlayerA.playerY += (int)(speed * deltaTime);
-  // GameState->PlayerB.playerY += (int)(speed * deltaTime);
 }
 
 void render_frame(game_state *GameState, game_offscreen_buffer *Buffer) {
