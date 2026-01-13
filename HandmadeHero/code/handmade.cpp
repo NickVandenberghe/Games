@@ -70,6 +70,39 @@ internal void DrawRectangle(game_offscreen_buffer *Buffer, real32 RealMinX,
   }
 }
 
+#pragma pack(push, 1)
+struct bitmap_header {
+  uint16 FileType;
+  uint32 FileSize;
+  uint16 Reserved1;
+  uint16 Reserved2;
+  uint32 BitmapOffset;
+  uint32 Size;
+  int32 Width;
+  int32 Height;
+  uint16 Planes;
+  uint16 BitsPerPixel;
+};
+#pragma pack(pop)
+
+internal uint32 *
+DEBUGLoadBitmap(thread_context *Thread,
+                debug_platform_read_entire_file *ReadEntireFile,
+                char *FileName) {
+  uint32 *Result = {};
+
+  debug_read_file_result ReadResult = ReadEntireFile(Thread, FileName);
+  if (ReadResult.ContentsSize != 0) {
+    bitmap_header *Header = (bitmap_header *)ReadResult.Contents;
+
+    uint32 *Pixels =
+        (uint32 *)((uint8 *)ReadResult.Contents + Header->BitmapOffset);
+    Result = Pixels;
+  }
+
+  return Result;
+}
+
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender) {
   Assert(sizeof(game_state) <= Memory->PermanentStorageSize);
   Assert(
@@ -97,6 +130,10 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender) {
     // GameState->PlayerP.X = 100;
     // GameState->PlayerP.Y = 100;
 
+    GameState->PixelPointer =
+        DEBUGLoadBitmap(Thread, Memory->DEBUGPlatformReadEntireFile,
+                        "../data/test/structured_art.bmp");
+
     GameState->PlayerP.AbsoluteTileX = 3;
     GameState->PlayerP.AbsoluteTileY = 3;
     GameState->PlayerP.TileRelativeX = 5.0f;
@@ -117,7 +154,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender) {
     tile_map *TileMap = World->TileMap;
 
     // NOTE: This is set to using 256x256 tile chunks
-    TileMap->ChunkShift = 3;
+    TileMap->ChunkShift = 4;
     TileMap->ChunkMask =
         (1 << TileMap->ChunkShift) -
         1; // Mask for ChunkShift bits makes it 0x100 , -1 gives 0xFF
@@ -156,7 +193,9 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender) {
         RandomChoice = RandomNumberTable[RandomNumberIndex++] % 3;
       }
 
+      bool32 CreatedZDoor = false;
       if (RandomChoice == 2) {
+        CreatedZDoor = true;
         if (AbsTileZ == 0) {
           DoorUp = true;
         } else if (AbsTileZ == 1) {
@@ -178,13 +217,15 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender) {
           if ((TileX == 0) && (!DoorLeft || (TileY != (TilesPerHeight / 2)))) {
             TileValue = 3;
           }
-          if ((TileX == (TilesPerWidth - 1)) && (!DoorRight || (TileY != (TilesPerHeight / 2)))) {
+          if ((TileX == (TilesPerWidth - 1)) &&
+              (!DoorRight || (TileY != (TilesPerHeight / 2)))) {
             TileValue = 3;
           }
           if ((TileY == 0) && (!DoorBottom || (TileX != (TilesPerWidth / 2)))) {
             TileValue = 3;
           }
-          if ((TileY == (TilesPerHeight - 1)) && (!DoorTop || (TileX != (TilesPerWidth / 2)))) {
+          if ((TileY == (TilesPerHeight - 1)) &&
+              (!DoorTop || (TileX != (TilesPerWidth / 2)))) {
             TileValue = 3;
           }
           if ((TileX == 5) && (TileY == 5)) {
@@ -194,18 +235,16 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender) {
               TileValue = 5;
             }
           }
-          SetTileValue(WorldArena, TileMap, AbsTileX, AbsTileY, AbsTileZ, TileValue);
+          SetTileValue(WorldArena, TileMap, AbsTileX, AbsTileY, AbsTileZ,
+                       TileValue);
         }
       }
       DoorLeft = DoorRight;
       DoorBottom = DoorTop;
-      if (DoorUp) {
 
-        DoorUp = false;
-        DoorDown = true;
-      } else if (DoorDown) {
-        DoorUp = true;
-        DoorDown = false;
+      if (CreatedZDoor) {
+        DoorDown = !DoorDown;
+        DoorUp = !DoorUp;
       } else {
         DoorUp = false;
         DoorDown = false;
@@ -289,6 +328,15 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender) {
                        IsTileMapPointEmpty(TileMap, PlayerRight);
 
       if (IsValid) {
+        if (!AreOnSameTile(&GameState->PlayerP, &NewPlayerP)) {
+          uint32 NewTileValue = GetTileValue(TileMap, NewPlayerP);
+          if (NewTileValue == 4) {
+            NewPlayerP.AbsoluteTileZ++;
+          } else if (NewTileValue == 5) {
+            NewPlayerP.AbsoluteTileZ--;
+          }
+        }
+
         GameState->PlayerP = NewPlayerP;
       }
     }
@@ -354,6 +402,16 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender) {
                 PlayerLeft + MetersToPixels * PlayerWidth,
                 PlayerTop + MetersToPixels * PlayerHeight, PlayerR, PlayerG,
                 PlayerB, PlayerAlpha);
+
+#if 0
+  uint32 *Source = GameState->PixelPointer;
+  uint32 * Dest = (uint32*)Buffer->Memory;
+  for (int32 Y = 0; Y < Buffer->Height; Y++) {
+    for (int32 X = 0; X < Buffer->Width; X++) {
+      *Dest++ = *Source++;
+    }
+  }
+#endif
 }
 
 extern "C" GAME_GET_SOUND_SAMPLES(GameGetSoundSamples) {
@@ -361,32 +419,3 @@ extern "C" GAME_GET_SOUND_SAMPLES(GameGetSoundSamples) {
 
   GameOutputSound(GameState, SoundBuffer, 400);
 }
-
-// void RenderWeirdGradient(game_offscreen_buffer* Buffer, int XOffset, int
-// YOffset)
-// {
-//     int Width = Buffer->Width;
-//     int Height = Buffer->Height;
-//
-//     uint8* Row = (uint8*)Buffer->Memory; // so that we can move per byte
-//
-//     for (int Y = 0; Y < Height; Y++)
-//     {
-//         uint32* Pixel = (uint32*)Row;
-//         for (int X = 0; X < Width; X++)
-//         {
-//             // Pixel in memory: BB GG RR xx                   // little
-//             endian
-//
-//             uint8 Blue = (uint8)(X + XOffset);
-//             uint8 Green = (uint8)(Y + YOffset);
-//             uint8 Red = (uint8)(X + Y);
-//
-//             // 0x xx RR GG BB
-//             *Pixel++ = ((Red << 16) | (Green << 8) | Blue);
-//         }
-//
-//         Row += Buffer->Pitch;
-//     }
-// }
-//

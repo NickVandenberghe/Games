@@ -66,8 +66,8 @@ inline tile_chunk_position GetChunkPositionFor(tile_map *TileMap,
   Result.TileChunkX = AbsoluteTileX >> TileMap->ChunkShift;
   Result.TileChunkY = AbsoluteTileY >> TileMap->ChunkShift;
   Result.TileChunkZ = AbsoluteTileZ;
-  Result.RelativeTileX = AbsoluteTileX & TileMap->ChunkMask;
-  Result.RelativeTileY = AbsoluteTileY & TileMap->ChunkMask;
+  Result.OffsetX = AbsoluteTileX & TileMap->ChunkMask;
+  Result.OffsetY = AbsoluteTileY & TileMap->ChunkMask;
 
   return Result;
 }
@@ -79,7 +79,14 @@ internal uint32 GetTileValue(tile_map *TileMap, uint32 AbsTileX,
   tile_chunk *TileChunk = GetTileChunk(
       TileMap, ChunkPos.TileChunkX, ChunkPos.TileChunkY, ChunkPos.TileChunkZ);
   uint32 TileChunkValue = GetTileValue(
-      TileMap, TileChunk, ChunkPos.RelativeTileX, ChunkPos.RelativeTileY);
+      TileMap, TileChunk, ChunkPos.OffsetX, ChunkPos.OffsetY);
+  return TileChunkValue;
+}
+
+internal uint32 GetTileValue(tile_map *TileMap, tile_map_position Pos) {
+  uint32 TileChunkValue = GetTileValue(TileMap, Pos.AbsoluteTileX,
+                                       Pos.AbsoluteTileY, Pos.AbsoluteTileZ);
+
   return TileChunkValue;
 }
 
@@ -99,8 +106,8 @@ internal void SetTileValue(memory_arena *Arena, tile_map *TileMap,
     }
   }
 
-  SetTileValue(TileMap, TileChunk, ChunkPos.RelativeTileX,
-               ChunkPos.RelativeTileY, TileValue);
+  SetTileValue(TileMap, TileChunk, ChunkPos.OffsetX,
+               ChunkPos.OffsetY, TileValue);
 }
 
 internal bool32 IsTileMapPointEmpty(tile_map *TileMap,
@@ -108,7 +115,8 @@ internal bool32 IsTileMapPointEmpty(tile_map *TileMap,
   uint32 TileChunkValue =
       GetTileValue(TileMap, CanonicalPos.AbsoluteTileX,
                    CanonicalPos.AbsoluteTileY, CanonicalPos.AbsoluteTileZ);
-  bool32 Empty = (TileChunkValue == 2 || TileChunkValue == 4 || TileChunkValue ==5);
+  bool32 Empty =
+      (TileChunkValue == 2 || TileChunkValue == 4 || TileChunkValue == 5);
   return Empty;
 }
 
@@ -138,6 +146,15 @@ inline tile_map_position RecanonicalizePosition(tile_map *TileMap,
 
   RecanonicalizeCoord(TileMap, &Result.AbsoluteTileX, &Result.TileRelativeX);
   RecanonicalizeCoord(TileMap, &Result.AbsoluteTileY, &Result.TileRelativeY);
+
+  return Result;
+}
+
+inline bool32 AreOnSameTile(tile_map_position *A, tile_map_position *B) {
+
+  bool32 Result = (A->AbsoluteTileX == B->AbsoluteTileX) &&
+                  (A->AbsoluteTileY == B->AbsoluteTileY) &&
+                  (A->AbsoluteTileZ == B->AbsoluteTileZ);
 
   return Result;
 }

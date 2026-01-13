@@ -17,8 +17,8 @@ struct tile_chunk_position {
   uint32 TileChunkY;
   uint32 TileChunkZ;
 
-  uint32 RelativeTileX;
-  uint32 RelativeTileY;
+  uint32 OffsetX;
+  uint32 OffsetY;
 };
 
 struct tile_chunk {
