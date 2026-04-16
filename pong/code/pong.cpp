@@ -1,4 +1,5 @@
 #include "pong.h"
+#include "math.h"
 #include "pong_platform.h"
 #include <iostream>
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender) {}
@@ -62,19 +63,19 @@ void draw_rect(game_offscreen_buffer *Buffer, real32 RealMinX, real32 RealMinY,
   }
 }
 
-inline bool32 IsCoordinateEmpty(world *World, world_position Pos) {
+inline bool32 IsCoordinateEmpty(world *World, vector2 Pos) {
   bool32 Result = false;
 
-  std::cout << "World->WorldSideInMeters" << World->WorldSideInMeters << '\n';
-  std::cout << "0 < Pos.playerX " << (0 < Pos.playerX) << '\n';
-  std::cout << "Pos.playerX < World->WorldSideInMeters"
-            << (Pos.playerX < World->WorldSideInMeters) << '\n';
-  std::cout << "0 < Pos.playerX " << (0 < Pos.playerY) << '\n';
-  std::cout << "Pos.playerY < World->WorldSideInMeters"
-            << (Pos.playerY < World->WorldSideInMeters) << '\n';
+  // std::cout << "World->WorldSideInMeters" << World->WorldSideInMeters <<
+  // '\n'; std::cout << "0 < Pos.playerX " << (0 < Pos.playerX) << '\n';
+  // std::cout << "Pos.playerX < World->WorldSideInMeters"
+  //           << (Pos.playerX < World->WorldSideInMeters) << '\n';
+  // std::cout << "0 < Pos.playerX " << (0 < Pos.playerY) << '\n';
+  // std::cout << "Pos.playerY < World->WorldSideInMeters"
+  //           << (Pos.playerY < World->WorldSideInMeters) << '\n';
 
-  if (0 < Pos.playerX && Pos.playerX < World->WorldSideInMeters) {
-    if (0 < Pos.playerY && Pos.playerY < World->WorldSideInMeters) {
+  if (0 < Pos.X && Pos.X < World->WorldSideInMeters) {
+    if (0 < Pos.Y && Pos.Y < World->WorldSideInMeters) {
       Result = true;
     }
   }
@@ -94,49 +95,116 @@ void update_game(game_state *GameState, game_input *GameInput) {
       // use analog movement tuning
     } else {
       // use digital movement tuning
-      real32 dPlayerX = 0.0f;
-      real32 dPlayerY = 0.0f;
+
+      vector2 Velocity = {0.0f, 0.0f};
+      vector2 MoveDirection = {0.0f, 0.0f};
 
       if (Controller->MoveUp.EndedDown) {
-        dPlayerY = -1.0f;
+        MoveDirection.Y -= 1.0f;
       }
 
       if (Controller->MoveDown.EndedDown) {
-        dPlayerY = 1.0f;
+        MoveDirection.Y += 1.0f;
       }
 
       if (Controller->MoveLeft.EndedDown) {
-        dPlayerX = -1.0f;
+        MoveDirection.X -= 1.0f;
       }
 
       if (Controller->MoveRight.EndedDown) {
-        dPlayerX = 1.0f;
+        MoveDirection.X += 1.0f;
+      }
+      real32 Length = sqrtf(MoveDirection.X * MoveDirection.X +
+                            MoveDirection.Y * MoveDirection.Y);
+
+      if (Length > 0.0f) {
+        MoveDirection.X /= Length;
+        MoveDirection.Y /= Length;
       }
 
-      dPlayerX *= speed;
-      dPlayerY *= speed;
+      Velocity.X = MoveDirection.X * speed;
+      Velocity.Y = MoveDirection.Y * speed;
 
-      world_position PlayerPosition = GameState->PlayerA;
+      entity PlayerPosition = GameState->PlayerA;
 
-      PlayerPosition.playerY += (int)(GameInput->dtForFrame * dPlayerY);
+      PlayerPosition.Position.Y += (int)(GameInput->dtForFrame * Velocity.Y);
+      PlayerPosition.Position.X += (int)(GameInput->dtForFrame * Velocity.X);
+
+      std::cout << "PlayerPosition New Position" << '\n';
+      std::cout << "PlayerPosition Position.X" << (PlayerPosition.Position.X)
+                << '\n';
+      std::cout << "PlayerPosition Position.Y" << (PlayerPosition.Position.Y)
+                << '\n'
+                << '\n';
       // std::cout << "GameState->PlayerA.playerY" << GameState->PlayerA.playerY
       //           << '\n';
-      GameState->Ball.playerX += (int)(GameInput->dtForFrame * dPlayerX);
-      GameState->Ball.playerY += (int)(GameInput->dtForFrame * dPlayerY);
+      // GameState->Ball.playerX += (int)(GameInput->dtForFrame * dPlayerX);
+      // GameState->Ball.playerY += (int)(GameInput->dtForFrame * dPlayerY);
       // diagnoal will be faster! Fix once we have vectors
 
-      world_position PlayerBottom = PlayerPosition;
+      entity PlayerBottom = PlayerPosition;
 
-      PlayerBottom.playerY += GameState->PaddleHeight;
+      PlayerBottom.Position.Y += GameState->PaddleHeight;
 
-      bool32 IsValid = IsCoordinateEmpty(&GameState->World, PlayerPosition) &&
-                       IsCoordinateEmpty(&GameState->World, PlayerBottom);
+      bool32 IsValid =
+          IsCoordinateEmpty(&GameState->World, PlayerPosition.Position) &&
+          IsCoordinateEmpty(&GameState->World, PlayerBottom.Position);
 
       if (IsValid) {
         GameState->PlayerA = PlayerPosition;
       }
     }
   }
+
+  entity NewBall = GameState->Ball;
+
+  real32 Min = 0.0f;
+  real32 Max = 500.0f;
+
+  std::cout << "NewBall Old Position" << '\n';
+  std::cout << "NewBall Position.X" << (NewBall.Position.X) << '\n';
+  std::cout << "NewBall Position.Y" << (NewBall.Position.Y) << '\n' << '\n';
+
+  NewBall.Position.X += (GameInput->dtForFrame * NewBall.Velocity.X);
+  NewBall.Position.Y += (GameInput->dtForFrame * NewBall.Velocity.Y);
+
+  std::cout << "NewBall New Position" << '\n';
+  std::cout << "NewBall Position.X" << (NewBall.Position.X) << '\n';
+  std::cout << "NewBall Position.Y" << (NewBall.Position.Y) << '\n' << '\n';
+
+  // X axis bounce
+  if (NewBall.Position.X <= Min) {
+    NewBall.Position.X = Min;
+    NewBall.Velocity.X = -NewBall.Velocity.X;
+  } else if (NewBall.Position.X >= Max) {
+    NewBall.Position.X = Max;
+    NewBall.Velocity.X = -NewBall.Velocity.X;
+  }
+
+  // Y axis bounce
+  if (NewBall.Position.Y <= Min) {
+    NewBall.Position.Y = Min;
+    NewBall.Velocity.Y = -NewBall.Velocity.Y;
+  } else if (NewBall.Position.Y >= Max) {
+    NewBall.Position.Y = Max;
+    NewBall.Velocity.Y = -NewBall.Velocity.Y;
+  }
+
+  vector2 BallTop = NewBall.Position;
+  BallTop.Y -= GameState->BallHeight;
+
+  std::cout << "NewBall after correction " << '\n';
+  std::cout << "NewBall Position.X" << (NewBall.Position.X) << '\n';
+  std::cout << "NewBall Position.Y" << (NewBall.Position.Y) << '\n' << '\n';
+
+  std::cout << "=============================================================="
+            << '\n';
+  // bool32 IsValid = IsCoordinateEmpty(&GameState->World, NewBall.Position) &&
+  //                  IsCoordinateEmpty(&GameState->World, BallTop);
+  //
+  // if (IsValid) {
+  GameState->Ball = NewBall;
+  // }
 }
 
 void render_frame(game_state *GameState, game_offscreen_buffer *Buffer) {
@@ -147,12 +215,18 @@ void render_frame(game_state *GameState, game_offscreen_buffer *Buffer) {
   real32 VerticalMetersToPixels =
       (real32)Buffer->Height / (real32)World->WorldSideInMeters;
 
+  real32 PixelsPerMeter = (HorizontalMetersToPixels < VerticalMetersToPixels)
+                              ? HorizontalMetersToPixels
+                              : VerticalMetersToPixels;
+
   int width = Buffer->Width;
   int height = Buffer->Height;
 
-  std::cout << "width" << width << '\n';
-  std::cout << "height" << height << '\n';
-
+  // std::cout << "width" << width << '\n';
+  // std::cout << "HorizontalMetersToPixels" << HorizontalMetersToPixels <<
+  // '\n'; std::cout << "height" << height << '\n'; std::cout <<
+  // "VerticalMetersToPixels" << VerticalMetersToPixels << '\n';
+  //
   /* fill background */
   uint32_t bg = 0xFF202030; /* dark blue-ish */
 
@@ -160,57 +234,58 @@ void render_frame(game_state *GameState, game_offscreen_buffer *Buffer) {
 
   uint32_t color = 0xFFFFFFFF; // white
 
-  // std::cout << "PlayerA-X" << GameState->PlayerA.playerX << '\n';
-  // std::cout << "PlayerA-XMtP"
-  //           << GameState->PlayerA.playerX * HorizontalMetersToPixels << '\n';
-  // std::cout << "PlayerA-Y" << GameState->PlayerA.playerY << '\n';
-  // std::cout << "PlayerA-YMtp"
-  // << GameState->PlayerA.playerY * VerticalMetersToPixels << '\n';
+  std::cout << "PlayerA-X" << GameState->PlayerA.Position.X << '\n';
+  std::cout << "PlayerA-XMtP"
+            << GameState->PlayerA.Position.X * HorizontalMetersToPixels << '\n';
+  std::cout << "PlayerA-Y" << GameState->PlayerA.Position.Y << '\n';
+  std::cout << "PlayerA-YMtp"
+            << GameState->PlayerA.Position.Y * VerticalMetersToPixels << '\n';
+  std::cout << "========" << '\n';
   // std::cout << "PlayerB-X" << GameState->PlayerB.playerX << '\n';
   // std::cout << "PlayerB-XMtP"
   //           << GameState->PlayerB.playerX * HorizontalMetersToPixels << '\n';
   // std::cout << "PlayerB-Y" << GameState->PlayerB.playerY << '\n';
   // std::cout << "PlayerB-YMtp"
   //           << GameState->PlayerB.playerY * VerticalMetersToPixels << '\n';
-  std::cout << "BallX" << GameState->Ball.playerX << '\n';
-  std::cout << "BallXMtP" << GameState->Ball.playerX * HorizontalMetersToPixels
-            << '\n';
-  std::cout << "BallXMtP"
-            << (GameState->Ball.playerX + GameState->BallWidth) *
-                   HorizontalMetersToPixels
-            << '\n';
-  std::cout << "BallY" << GameState->Ball.playerY << '\n';
-  std::cout << "BallYMtp" << GameState->Ball.playerY * VerticalMetersToPixels
-            << '\n';
-  std::cout << "BallYMtp"
-            << (GameState->Ball.playerY + GameState->BallHeight) *
-                   VerticalMetersToPixels
-            << '\n';
+  // std::cout << "BallX" << GameState->Ball.playerX << '\n';
+  // std::cout << "BallXMtP" << GameState->Ball.playerX *
+  // HorizontalMetersToPixels
+  //           << '\n';
+  // std::cout << "BallXMtP"
+  //           << (GameState->Ball.playerX + GameState->BallWidth) *
+  //                  HorizontalMetersToPixels
+  //           << '\n';
+  // std::cout << "BallY" << GameState->Ball.playerY << '\n';
+  // std::cout << "BallYMtp" << GameState->Ball.playerY * VerticalMetersToPixels
+  //           << '\n';
+  // std::cout << "BallYMtp"
+  //           << (GameState->Ball.playerY + GameState->BallHeight) *
+  //                  VerticalMetersToPixels
+  //           << '\n';
 
   //  player a
-  draw_rect(Buffer, GameState->PlayerA.playerX * HorizontalMetersToPixels,
-            GameState->PlayerA.playerY * VerticalMetersToPixels,
-            (GameState->PlayerA.playerX + GameState->PaddleWidth) *
-                HorizontalMetersToPixels,
-            (GameState->PlayerA.playerY + GameState->PaddleHeight) *
-                VerticalMetersToPixels,
+  draw_rect(Buffer, GameState->PlayerA.Position.X * PixelsPerMeter,
+            GameState->PlayerA.Position.Y * PixelsPerMeter,
+            (GameState->PlayerA.Position.X + GameState->PaddleWidth) *
+                PixelsPerMeter,
+            (GameState->PlayerA.Position.Y + GameState->PaddleHeight) *
+                PixelsPerMeter,
             color);
 
   // player b
-  draw_rect(Buffer, GameState->PlayerB.playerX * HorizontalMetersToPixels,
-            GameState->PlayerB.playerY * VerticalMetersToPixels,
-            (GameState->PlayerB.playerX + GameState->PaddleWidth) *
-                HorizontalMetersToPixels,
-            (GameState->PlayerB.playerY + GameState->PaddleHeight) *
-                VerticalMetersToPixels,
+  draw_rect(Buffer, GameState->PlayerB.Position.X * PixelsPerMeter,
+            GameState->PlayerB.Position.Y * PixelsPerMeter,
+            (GameState->PlayerB.Position.X + GameState->PaddleWidth) *
+                PixelsPerMeter,
+            (GameState->PlayerB.Position.Y + GameState->PaddleHeight) *
+                PixelsPerMeter,
             color);
 
   // ball
-  draw_rect(Buffer, GameState->Ball.playerX * HorizontalMetersToPixels,
-            GameState->Ball.playerY * VerticalMetersToPixels,
-            (GameState->Ball.playerX + GameState->BallWidth) *
-                HorizontalMetersToPixels,
-            (GameState->Ball.playerY + GameState->BallHeight) *
-                VerticalMetersToPixels,
-            color);
+  draw_rect(
+      Buffer, GameState->Ball.Position.X * PixelsPerMeter,
+      GameState->Ball.Position.Y * PixelsPerMeter,
+      (GameState->Ball.Position.X + GameState->BallWidth) * PixelsPerMeter,
+      (GameState->Ball.Position.Y + GameState->BallHeight) * PixelsPerMeter,
+      color);
 }

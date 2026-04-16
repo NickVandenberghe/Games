@@ -17,11 +17,6 @@
 
 #define ArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
 
-struct world_position {
-  int playerX;
-  int playerY;
-};
-
 struct world {
   real32 WorldSideInMeters;
   int32 WorldSideInPixels;
@@ -31,11 +26,21 @@ struct world {
   real32 LowerLeftY;
 };
 
-struct game_state {
-  world_position PlayerA;
-  world_position PlayerB;
+struct vector2 {
+  real32 X;
+  real32 Y;
+};
 
-  world_position Ball;
+struct entity {
+  vector2 Position;
+  vector2 Velocity;
+};
+
+struct game_state {
+  entity PlayerA;
+  entity PlayerB;
+
+  entity Ball;
 
   int32 PaddleWidth;
   int32 PaddleHeight;

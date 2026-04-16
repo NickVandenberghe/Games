@@ -44,16 +44,19 @@ inline void GameWorldInit(world *World) {
 
 static void GameStateInit(game_state *GameState) {
   memset(GameState, 0, sizeof(game_state));
-  GameState->PlayerA.playerX = 10;
-  GameState->PlayerA.playerY = 10;
-  GameState->PlayerB.playerX = 950;
-  GameState->PlayerB.playerY = 10;
-  GameState->Ball.playerY = 50;
-  GameState->Ball.playerX = 50;
+  GameState->PlayerA.Position.X = 10;
+  GameState->PlayerA.Position.Y = 10;
+  GameState->PlayerB.Position.X = 950;
+  GameState->PlayerB.Position.Y = 10;
+  GameState->Ball.Position.X = 50;
+  GameState->Ball.Position.Y = 50;
+
+  GameState->Ball.Velocity.X = 200.0f;
+  GameState->Ball.Velocity.Y = 300.0f;
 
   GameState->PaddleHeight = 200;
   GameState->PaddleWidth = 20;
-  GameState->BallHeight = 50;
+  GameState->BallHeight = 25;
   GameState->BallWidth = 25;
 
   GameWorldInit(&GameState->World);
@@ -792,6 +795,8 @@ static void xdg_toplevel_handle_configure(void *data,
   if (width > 0 && height > 0) {
     state->PendingWidth = width;
     state->PendingHeight = height;
+
+    std::cout << "state->PendingWidth" << state->PendingWidth << '\n';
     state->ResizePending = true;
   }
 }
